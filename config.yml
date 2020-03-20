@@ -1,0 +1,8 @@
+outuntreated: "/path/to/untreated/fit/results"
+outtreated: "/path/to/treated/fit/results"
+
+expressiondata: "fit_data_in.csv"
+parameterfile: "parameter_bounds.csv"
+gensatime: 1000
+nocorestreatedfit: 16
+norepstreatedfit: 5e4

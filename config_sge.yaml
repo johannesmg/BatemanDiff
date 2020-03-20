@@ -1,0 +1,14 @@
+__default__:
+    h_vmem: '4g'
+    h_rt: '03:59:00'
+    pe: 'smp 1'
+
+fit_gene:
+    h_vmem: '4g'
+    h_rt: '03:59:00'
+    pe: 'smp 1'
+
+fit_gene_treated:
+    h_vmem: '2g'
+    h_rt: '03:59:00'
+    pe: 'smp 16'

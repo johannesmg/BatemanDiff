@@ -6,6 +6,7 @@ library(tidyr)
 library(readr)
 
 source("functions.R")
+source("gradient_functions.R")
 
 args = commandArgs(trailingOnly=TRUE)
 data.file=args[1]
@@ -14,8 +15,10 @@ parameter.bounds.file=args[3]
 out.file=args[4]
 no.cores=as.numeric(args[5])
 no.reps=as.numeric(args[6])
+fnscale=as.numeric(as.character(args[7]))
+factr=as.numeric(as.character(args[8]))
+maxit=as.numeric(as.character(args[9]))
 
-seed.no=ceiling(runif(1)*1e5)
 
 par.names <- c("g1p","g2p","k01","n1","k02","n2","a","b","g1","g2","n","dt")
 no.pars=length(par.names)
@@ -25,9 +28,9 @@ names(parm.bounds) <- c("lo","hi","start")
 
 bounds.frame=tibble(parameter=par.names,lo=parm.bounds[["lo"]],hi=parm.bounds[["hi"]])
 untreated.fit=read_csv(untreated.fit.file,col_names=F)
-colnames(untreated.fit) <- c("gene",par.names[7:12],"cost")
+colnames(untreated.fit) <- c("gene","seed",par.names[7:12],"cost")
 current.gene=untreated.fit$gene[1]
-
+seed.no=untreated.fit$seed[1]
 
 untreated.fit %>%
     mutate(a=ifelse(a==0,1,a)) %>%
@@ -70,14 +73,21 @@ all.data=as.matrix(all.data)
 
 in.pars = provide.starting.parameters(current.gene,seed.no,no.reps=no.reps,no.pars=no.pars,par.names=par.names,bounds.frame,random.gen="randomLHS")
 
-out.pars <- mclapply(1:nrow(in.pars),function(x){parm.bounds[["start"]] <- as.numeric(in.pars[x,2:13]);do.treated.fitting(data.matrix=all.data,parameter.vector=parm.bounds)},mc.cores=no.cores)
 
-out.pars <- do.call("rbind",out.pars)
-colnames(out.pars) <- c(par.names,"cost")
+optim.arguments=list(trace=0,fnscale=fnscale,factr=factr,maxit=maxit)
 
-out.pars <- bind_cols(tibble(gene=rep(current.gene,nrow(out.pars)),seed=rep(seed.no,nrow(out.pars)),no.reps=rep(no.reps,nrow(out.pars))),as_tibble(out.pars))
 
-out.pars=out.pars[which.min(out.pars$cost)[1],]
+out.pars <- mclapply(1:nrow(in.pars),function(x){parm.bounds[["start"]] <- as.numeric(in.pars[x,2:13]);do.treated.fitting(data.matrix=all.data,parameter.vector=parm.bounds,optim.method="lbfgsb",optim.arguments=optim.arguments)},mc.cores=no.cores)
 
-write_csv(out.pars,path=out.file,col_names=FALSE)
+parameters=lapply(out.pars,"[[","par")
+costs=lapply(out.pars,"[[","value")
+messages=lapply(out.pars,"[[","message")
+
+out.object=as_tibble(cbind(do.call("rbind",parameters),do.call("rbind",costs)))
+out.object=bind_cols(out.object,tibble(message=do.call("rbind",messages)))
+colnames(out.object) <- c(par.names,"cost","message")
+
+out.pars <- bind_cols(tibble(gene=rep(current.gene,nrow(out.object)),seed=rep(seed.no,nrow(out.object)),no.reps=rep(no.reps,nrow(out.object))),as_tibble(out.object))
+
+write_csv(out.pars,path=out.file,col_names=TRUE)
 

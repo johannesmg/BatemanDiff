@@ -1,8 +1,19 @@
-outuntreated: "/path/to/untreated/fit/results"
-outtreated: "/path/to/treated/fit/results"
+outuntreated: "/path/to/untreated_fits"
+outtreated: "/path/to/treated_fits"
 
-expressiondata: "fit_data_in.csv"
-parameterfile: "parameter_bounds.csv"
-gensatime: 1000
-nocorestreatedfit: 16
-norepstreatedfit: 5e4
+expressiondata: "expression_data.csv"
+parameterfile: "parameter_bounds_k_strict.csv"
+nocorestreatedfit: 32
+norepstreatedfithigh: 1000
+norepstreatedfitlow: 1000
+norepsfinal: 100
+
+optimmethod: [lbfgsb,lm,nmkb,gensa]
+gensatimehigh: 1000
+gensatimelow: 200
+fnscalehigh: 1e6
+factrhigh: 1e2
+maxithigh: 20000
+fnscalelow: 1
+factrlow: 1e7
+maxitlow: 1000

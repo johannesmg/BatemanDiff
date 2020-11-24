@@ -55,18 +55,12 @@ load.bounds.from.file <- function(file.name){
     list(lo.pars=as.numeric(p0["lo.pars",]),hi.pars=as.numeric(p0["hi.pars",]),start.pars=p0["start.pars",])
 }
 
-# read.chunk.file <- function(chunk.file,chunk.pointer){
-#     chunks <- read_csv(file=chunk.file,skip=chunk.pointer,n_max=1,col_names=FALSE,col_types=c(X1=col_integer(),gene=col_character(),no.reps=col_double(),chunk=col_integer(),seed=col_integer()))
-#     colnames(chunks) <- c("gene","no.reps.all","no.reps.chunk","chunk","seed")
-#     list(gene=chunks$gene,no.reps.all=chunks$no.reps.all,no.reps.chunk=chunks$no.reps.chunk,chunk=chunks$chunk,seed=chunks$seed)
-# }
-
 
 cost.function.untreated <- function(pars,data.matrix,fn.string){
     responses <- bateman.model(data.matrix$t,rep(pars[3],length(data.matrix$t)),rep(pars[4],length(data.matrix$t)),pars)
     measured.dep <- data.matrix[,"expression"]
     measured.sd <- data.matrix[,"sd.expression"]
-    sum((measured.dep-responses)^2/(2*measured.sd^2))
+    sum((measured.dep-responses)^2/(measured.sd^2))
 }
 
 
@@ -75,12 +69,14 @@ do.untreated.fitting <- function(data.matrix,max.time,par.names){
     parameter.vector[["lo"]] <- as.numeric(data.matrix[1,paste(par.names,"lo",sep="_")])
     parameter.vector[["hi"]] <- as.numeric(data.matrix[1,paste(par.names,"hi",sep="_")])
     parameter.vector[["start"]] <- as.numeric(data.matrix[1,par.names])
-    set.seed <- as.numeric(data.matrix[1,"seed"])
+    seed.no=as.numeric(data.matrix[1,"seed"])
+    set.seed(seed.no)
     yy <- GenSA(par=parameter.vector[["start"]],fn=cost.function.untreated,lower=parameter.vector[["lo"]],upper=parameter.vector[["hi"]],data.matrix=data.matrix,control=list(max.time=max.time))
     df.0 <- data.frame(t(as.matrix(c(yy$par,yy$value))))
     colnames(df.0) <- c(par.names,"cost")
     df.0$gene=as.character(data.matrix[1,"gene"])
-    df.0[,c("gene",par.names,"cost")]
+    df.0$seed=seed.no
+    df.0[,c("gene","seed",par.names,"cost")]
 }
 
 
@@ -91,14 +87,33 @@ cost.function.treated <- function(pars,data.matrix,fn.string){
     responses[w.conc] <- responses[w.conc]-responses[w.utr]
     measured.dep <- data.matrix[,"expression"]
     measured.sd <- data.matrix[,"sd.expression"]
-    sum((measured.dep-responses)^2/(2*measured.sd^2))
+    sum((measured.dep-responses)^2/(measured.sd^2))
+}
+
+cost.function.residual.vector <- function(pars,data.matrix,fn.string){
+    responses <- treatment.model(data.matrix[,"t"],data.matrix[,"conc"],pars)
+    w.conc=which(data.matrix[,"t"]==144 & data.matrix[,"conc"]>0 & data.matrix[,"batch"]==3)
+    w.utr=which(data.matrix[,"t"]==144 & data.matrix[,"batch"]==1)
+    responses[w.conc] <- responses[w.conc]-responses[w.utr]
+    measured.dep <- data.matrix[,"expression"]
+    measured.sd <- data.matrix[,"sd.expression"]
+    (measured.dep-responses)/measured.sd
 }
 
 
-
-do.treated.fitting <- function(data.matrix,parameter.vector){
-    yy <- optim(par=parameter.vector[["start"]],fn=cost.function.treated,lower=parameter.vector[["lo"]],upper=parameter.vector[["hi"]],data.matrix=data.matrix,method="L-BFGS-B")
-    c(yy$par,yy$value)
+do.treated.fitting <- function(data.matrix,parameter.vector,optim.method,optim.arguments){
+    if (optim.method=="lbfgsb"){
+        yy=optim(par=parameter.vector[["start"]],fn=cost.function.treated,lower=parameter.vector[["lo"]],upper=parameter.vector[["hi"]],gr=function(x,...){-analytical.gradient.cost.function(x,...)},data.matrix=data.matrix,method="L-BFGS-B",control=optim.arguments)
+    }else if (optim.method=="lm"){
+        yy=nls.lm(par=parameter.vector[["start"]],fn=cost.function.residual.vector,lower=parameter.vector[["lo"]],upper=parameter.vector[["hi"]],jac=function(x,...){-jacobian.cost.function(x,...)},data.matrix=data.matrix,control=optim.arguments)
+        yy$value=yy$deviance
+    }else if (optim.method=="gensa"){
+        yy <- GenSA(par=parameter.vector[["start"]],fn=cost.function.treated,lower=parameter.vector[["lo"]],upper=parameter.vector[["hi"]],data.matrix=data.matrix,control=optim.arguments)
+        yy$message=NA
+    }else if (optim.method=="nmkb"){
+        yy <- tryCatch(nmkb(par=mod.par(parameter.vector[["start"]],parameter.vector),fn=pl.interface,lower=parameter.vector[["lo"]],upper=parameter.vector[["hi"]],data.matrix=data.matrix),error=function(e){list(par=parameter.vector[["start"]],value=cost.function.treated(parameter.vector[["start"]],data.matrix=data.matrix),message="NA")})
+    }else stop(cat("Optim method must be one of \"lbfgsb\", \"lm\", or \"nmbk\""))
+    yy
 }
 
 
@@ -112,3 +127,6 @@ provide.starting.parameters <- function(gene.name,seed.no,no.reps,no.pars,par.na
     colnames(random.pars) <- par.names
     bind_cols(tibble(gene=rep(gene.name,nrow(random.pars))),random.pars)
 }    
+
+
+
